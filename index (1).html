@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kairos</title>
+<meta name="description" content="Paste a YouTube link and get the moments worth posting, with captions ready to copy.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Fraunces:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <a class="mark" href="/">Kairos</a>
+  <button id="theme" type="button">Dark</button>
+</header>
+<main>
+  <h1>Find the moment worth posting.</h1>
+  <form id="form" novalidate>
+    <label for="url">YouTube link</label>
+    <input id="url" type="url" placeholder="https://www.youtube.com/watch?v=" autocomplete="off">
+    <label for="type">Video type</label>
+    <select id="type">
+      <option value="auto">Detect for me</option>
+      <option value="stream">Stream</option>
+      <option value="movie">Movie</option>
+      <option value="podcast">Podcast or interview</option>
+      <option value="tutorial">Tutorial</option>
+    </select>
+    <button id="go" type="submit">Find clips</button>
+    <p id="msg" role="alert"></p>
+  </form>
+  <section id="out" aria-live="polite">
+    <p class="empty">Your clips will show up here. Start with a stream highlight or a podcast episode under an hour.</p>
+  </section>
+</main>
+<footer><a href="terms.html">Terms</a><a href="privacy.html">Privacy</a></footer>
+<script src="app.js"></script>
+</body>
+</html>
