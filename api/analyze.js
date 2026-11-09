@@ -1,4 +1,4 @@
-// Serverless function: sends a public YouTube link to Gemini and returns cleaned-up clip suggestions.
+// Serverless function: sends a section of a public YouTube video to Gemini and returns clip suggestions.
 const TYPES = {
   stream: 'a stream or streamer video: pick funny reactions, hype, rants, big surprises and moments that stop a viewer from scrolling',
   movie: 'a movie or show: pick iconic lines, high-emotion scenes, twists and memorable exchanges',
@@ -12,13 +12,17 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST.' });
   const key = process.env.GEMINI_API_KEY;
   if (!key) return res.status(500).json({ error: 'The server has no API key set. Add GEMINI_API_KEY in Vercel.' });
-  const { url, type } = req.body || {};
+  const body = req.body || {};
+  const { url, type } = body;
+  const from = Math.max(0, Math.round(n(body.from)));
+  const to = Math.round(n(body.to)) || from + 1800;
   if (!/^https:\/\/www\.youtube\.com\/watch\?v=[\w-]{11}$/.test(url || '')) return res.status(400).json({ error: 'Send a public YouTube link.' });
+  if (to <= from || to - from > 3600) return res.status(400).json({ error: 'Pick a section between 1 second and 60 minutes long.' });
 
   const strategy = TYPES[type]
     ? 'This video is ' + TYPES[type] + '.'
     : 'First decide if the video is a stream, movie, podcast or tutorial, then pick moments that fit that kind. Stream: ' + TYPES.stream + '. Movie: ' + TYPES.movie + '. Podcast: ' + TYPES.podcast + '. Tutorial: ' + TYPES.tutorial + '.';
-  const prompt = strategy + '\nFind up to 10 short clips that would work on TikTok, Instagram, YouTube Shorts and X. Rules: each clip is 20 to 60 seconds; it starts at the beginning of a sentence with a strong hook and ends on a clean sentence; clips do not overlap; each one must reflect what the video is actually about. All times are seconds from the start of the video.\n' +
+  const prompt = strategy + '\nFind up to 10 short clips that would work on TikTok, Instagram, YouTube Shorts and X. Rules: each clip is 20 to 60 seconds; it starts at the beginning of a sentence with a strong hook and ends on a clean sentence; clips do not overlap; each one must reflect what the video is actually about. All times are seconds from the start of the section you are given, where 0 is the first second you see.\n' +
     'Return only JSON shaped like {"type":"stream|movie|podcast|tutorial","clips":[{"start":0,"end":0,"score":0,"title":"","reason":"one sentence","hook":"","tags":["#a","#b","#c","#d","#e"],"captions":{"tiktok":"","instagram":"","shorts":"","x":""},"lines":[{"start":0,"end":0,"text":"3 to 7 spoken words"}],"cuts":[{"start":0,"end":0}]}]}. ' +
     'score is 0 to 100 for how likely the clip is to spread. lines are the spoken words of the clip, in order. cuts are silences over 0.8 seconds or filler words inside the clip that a viewer would not miss.';
 
@@ -27,7 +31,10 @@ module.exports = async (req, res) => {
     const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + (process.env.GEMINI_MODEL || 'gemini-2.5-flash') + ':generateContent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({ contents: [{ parts: [{ file_data: { file_uri: url } }, { text: prompt }] }], generationConfig: { temperature: 0.4, responseMimeType: 'application/json' } })
+      body: JSON.stringify({
+        contents: [{ parts: [{ file_data: { file_uri: url }, video_metadata: { start_offset: from + 's', end_offset: to + 's' } }, { text: prompt }] }],
+        generationConfig: { temperature: 0.4, responseMimeType: 'application/json', mediaResolution: 'MEDIA_RESOLUTION_LOW' }
+      })
     });
     j = await r.json();
     if (!r.ok) return res.status(502).json({ error: (j.error && j.error.message) || 'The analysis service returned an error.' });
@@ -55,5 +62,11 @@ module.exports = async (req, res) => {
     if (kept.every(k => c.end <= k.start || c.start >= k.end)) kept.push(c);
     if (kept.length === 10) break;
   }
+  // Move times from "inside the section" to "inside the whole video".
+  kept.forEach(c => {
+    c.start += from; c.end += from;
+    c.lines = c.lines.map(l => ({ start: l.start + from, end: l.end + from, text: l.text }));
+    c.cuts = c.cuts.map(x => ({ start: x.start + from, end: x.end + from }));
+  });
   res.status(200).json({ type: ['stream', 'movie', 'podcast', 'tutorial'].includes(d.type) ? d.type : 'video', clips: kept });
 };
